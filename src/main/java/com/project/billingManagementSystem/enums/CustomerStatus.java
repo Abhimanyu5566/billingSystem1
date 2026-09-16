@@ -1,7 +1,7 @@
-package com.project.billingManagementSystem.enums;
+    package com.project.billingManagementSystem.enums;
 
-public enum CustomerStatus {
+    public enum CustomerStatus {
 
-    Active, Inactive, Deleted;
+        Active, Inactive, Deleted;
 
-}
+    }

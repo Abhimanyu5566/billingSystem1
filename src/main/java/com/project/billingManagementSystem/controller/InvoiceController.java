@@ -1,10 +1,13 @@
 package com.project.billingManagementSystem.controller;
 
-
 import com.project.billingManagementSystem.apiResponse.APIResponse;
+import com.project.billingManagementSystem.entity.dto.createDTO.InvoiceRequest;
+import com.project.billingManagementSystem.entity.dto.updateDTO.InvoiceUpdateRequest;
 import com.project.billingManagementSystem.entity.invoice.Invoice;
 import com.project.billingManagementSystem.service.InvoiceService;
-import org.springframework.beans.factory.annotation.Autowired;
+
+import jakarta.validation.Valid;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -15,117 +18,120 @@ import java.util.List;
 @RequestMapping("/invoice")
 public class InvoiceController {
 
-    @Autowired
-    private InvoiceService service;
+    private final InvoiceService service;
+
+    public InvoiceController(InvoiceService service) {
+        this.service = service;
+    }
+
+
+    // =========================================================
+    // CREATE INVOICE
+    // =========================================================
 
     @PostMapping("/create-invoice")
-    public ResponseEntity<APIResponse<Invoice>> createInvoice(@RequestBody Invoice invoice) {
+    public ResponseEntity<APIResponse<Invoice>> createInvoice(
+            @Valid @RequestBody InvoiceRequest request) {
 
-        Invoice savedInvoice = service.createInvoice(invoice);
+        Invoice savedInvoice = service.createInvoice(request);
 
-        APIResponse<Invoice> response = APIResponse.<Invoice>builder()
-                .data(savedInvoice)
-                .message("Invoice created successfully")
-                .code(HttpStatus.OK.value())
-                .build();
+        APIResponse<Invoice> response =
+                APIResponse.<Invoice>builder()
+                        .success(true)
+                        .data(savedInvoice)
+                        .message("Invoice created successfully")
+                        .code(HttpStatus.CREATED.value())
+                        .build();
 
-        return ResponseEntity.ok(response);
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(response);
     }
+
+
+    // =========================================================
+    // GET ALL INVOICES
+    // =========================================================
 
     @GetMapping("/invoice-list")
     public ResponseEntity<APIResponse<List<Invoice>>> listOfAllInvoice() {
 
-        List<Invoice> lists = service.listInvoice();
-        if(lists.isEmpty()){
-            APIResponse<List<Invoice>> response = APIResponse.<List<Invoice>>builder()
-                    .success(false)
-                    .data(lists)
-                    .code(HttpStatus.NOT_FOUND.value())
-                    .message("No Invoice are present")
-                    .build();
+        List<Invoice> invoices = service.listInvoice();
 
-            return ResponseEntity.ok(response);
+        if (invoices.isEmpty()) {
 
+            APIResponse<List<Invoice>> response =
+                    APIResponse.<List<Invoice>>builder()
+                            .success(false)
+                            .data(invoices)
+                            .code(HttpStatus.NOT_FOUND.value())
+                            .message("No invoices are present")
+                            .build();
+
+            return ResponseEntity
+                    .status(HttpStatus.NOT_FOUND)
+                    .body(response);
         }
-        APIResponse<List<Invoice>> response = APIResponse.<List<Invoice>>builder()
-                .success(true)
-                .data(lists)
-                .code(HttpStatus.OK.value())
-                .message("Invoices fetched successfully")
-                .build();
+
+
+        APIResponse<List<Invoice>> response =
+                APIResponse.<List<Invoice>>builder()
+                        .success(true)
+                        .data(invoices)
+                        .code(HttpStatus.OK.value())
+                        .message("Invoices fetched successfully")
+                        .build();
 
         return ResponseEntity.ok(response);
     }
+
+
+    // =========================================================
+    // FIND INVOICE BY INVOICE NUMBER
+    // =========================================================
 
     @GetMapping("/find-invoice")
-    public ResponseEntity<APIResponse<Invoice>> findInvoiceByInvoiceNo(@RequestBody Invoice invoice) {
+    public ResponseEntity<APIResponse<Invoice>> findInvoiceByInvoiceNo(
+            @RequestParam String invoiceNo) {
 
-        if (invoice.getInvoiceNo() == null || invoice.getInvoiceNo().trim().isEmpty()) {
+        Invoice invoice = service.findInvoiceNO(invoiceNo);
 
-            APIResponse<Invoice> response = APIResponse.<Invoice>builder()
-                    .success(false)
-                    .data(null)
-                    .code(HttpStatus.BAD_REQUEST.value())
-                    .message("Invoice number is required")
-                    .build();
-
-            return ResponseEntity.badRequest().body(response);
-        }
-
-        Invoice checkedInvoice = service.findInvoiceNO(invoice.getInvoiceNo());
-
-        if (checkedInvoice == null) {
-
-            APIResponse<Invoice> response = APIResponse.<Invoice>builder()
-                    .success(false)
-                    .data(null)
-                    .code(HttpStatus.NOT_FOUND.value())
-                    .message("Invoice not found")
-                    .build();
-
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
-        }
-
-        APIResponse<Invoice> response = APIResponse.<Invoice>builder()
-                .success(true)
-                .data(checkedInvoice)
-                .code(HttpStatus.OK.value())
-                .message("Successfully Fetched Invoice")
-                .build();
+        APIResponse<Invoice> response =
+                APIResponse.<Invoice>builder()
+                        .success(true)
+                        .data(invoice)
+                        .code(HttpStatus.OK.value())
+                        .message("Invoice fetched successfully")
+                        .build();
 
         return ResponseEntity.ok(response);
     }
+
+
+    // =========================================================
+    // UPDATE INVOICE
+    // =========================================================
 
     @PutMapping("/update-invoice/{invoiceNo}")
     public ResponseEntity<APIResponse<Invoice>> updateInvoice(
-            @PathVariable("invoiceNo") String invoiceNo,
-            @RequestBody Invoice invoice) {
+            @PathVariable String invoiceNo,
+            @Valid @RequestBody InvoiceUpdateRequest request) {
 
-        Invoice checkedInvoice = service.findInvoiceNO(invoiceNo);
+        Invoice updatedInvoice =
+                service.updatingDataAndAmount(
+                        invoiceNo,
+                        request
+                );
 
-        if (checkedInvoice != null) {
+        APIResponse<Invoice> response =
+                APIResponse.<Invoice>builder()
+                        .success(true)
+                        .code(HttpStatus.OK.value())
+                        .message("Invoice updated successfully")
+                        .data(updatedInvoice)
+                        .build();
 
-            Invoice updatedInvoice = service.updatingDataAndAmount(invoiceNo, invoice);
-
-            APIResponse<Invoice> response = APIResponse.<Invoice>builder()
-                    .success(true)
-                    .code(HttpStatus.OK.value())
-                    .message("Invoice updated successfully")
-                    .data(updatedInvoice)
-                    .build();
-
-            return ResponseEntity.ok(response);
-        }
-
-        APIResponse<Invoice> response = APIResponse.<Invoice>builder()
-                .success(false)
-                .code(HttpStatus.NOT_FOUND.value())
-                .message("Invoice not found with invoice number: " + invoiceNo)
-                .data(null)
-                .build();
-
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+        return ResponseEntity.ok(response);
     }
-
-
 }
+

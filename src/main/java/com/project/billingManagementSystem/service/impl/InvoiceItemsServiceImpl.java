@@ -1,931 +1,271 @@
-//package com.project.billingManagementSystem.service.impl;
-//
-//import com.project.billingManagementSystem.entity.invoice.Invoice;
-//import com.project.billingManagementSystem.entity.invoice.Items;
-//import com.project.billingManagementSystem.repository.InvoiceItemsRepository;
-//import com.project.billingManagementSystem.repository.InvoiceRepository;
-//import com.project.billingManagementSystem.service.InvoiceItemsService;
-//import com.project.billingManagementSystem.service.InvoiceService;
-//import org.springframework.beans.factory.annotation.Autowired;
-//import org.springframework.stereotype.Component;
-//import org.springframework.transaction.annotation.Transactional;
-//
-//import java.math.BigDecimal;
-//import java.util.List;
-//
-//@Component
-//public class InvoiceItemsServiceImpl implements InvoiceItemsService {
-//
-//    @Autowired
-//    private InvoiceItemsRepository repository;
-//
-//    @Autowired
-//    private InvoiceService invoiceService;
-//
-//    @Autowired
-//    private InvoiceRepository invoiceRepository;
-//
-//
-//    // =========================================================
-//    // ADD SINGLE ITEM
-//    // =========================================================
-//
-//    @Override
-//    @Transactional
-//    public Items addItems(String invoiceNo, Items items) {
-//
-//        // Find invoice
-//        Invoice invoice = invoiceService.findInvoiceNO(invoiceNo);
-//
-//        if (invoice == null) {
-//            throw new RuntimeException("Invoice not found with invoiceNo: " + invoiceNo);
-//        }
-//
-//        // Validate quantity
-//        if (items.getQuantity() == null || items.getQuantity() <= 0) {
-//
-//            throw new RuntimeException("Quantity must be greater than 0");
-//        }
-//
-//        // Validate rate
-//        if (items.getRate() == null || items.getRate().compareTo(BigDecimal.ZERO) < 0) {
-//
-//            throw new RuntimeException("Rate cannot be null or negative");
-//        }
-//
-//        // =====================================================
-//        // AUTO GENERATE ITEM SERIAL NUMBER
-//        // =====================================================
-//
-//        Integer lastSerialNo = repository.findMaxItemSerialNoByInvoiceId(invoice.getInvoiceId());
-//
-//        int nextSerialNo = lastSerialNo == null ? 1 : lastSerialNo + 1;
-//
-//        items.setItemSerialNo(nextSerialNo);
-//
-//        // =====================================================
-//        // CALCULATE ITEM AMOUNT
-//        // =====================================================
-//
-//        BigDecimal amount = items.getRate().multiply(BigDecimal.valueOf(items.getQuantity()));
-//
-//        items.setAmount(amount);
-//
-//        // Associate item with invoice
-//        items.setInvoice(invoice);
-//
-//        // Save item
-//        Items savedItem = repository.save(items);
-//
-//        // =====================================================
-//        // UPDATE INVOICE TOTAL
-//        // =====================================================
-//
-//        BigDecimal currentTotal = invoice.getTotalAmount() == null ? BigDecimal.ZERO : invoice.getTotalAmount();
-//
-//        invoice.setTotalAmount(currentTotal.add(amount));
-//
-//        // Save invoice
-//        invoiceRepository.save(invoice);
-//
-//        return savedItem;
-//    }
-//
-//
-//    // =========================================================
-//    // UPDATE ITEM
-//    // invoiceNo + serialNo
-//    // =========================================================
-//
-//    @Override
-//    @Transactional
-//    public Items updateInvoiceItems(String invoiceNo, Integer serialNo, Items updatedItem) {
-//
-//        // Find invoice
-//        Invoice invoice = invoiceService.findInvoiceNO(invoiceNo);
-//
-//        if (invoice == null) {
-//            throw new RuntimeException("Invoice not found with invoiceNo: " + invoiceNo);
-//        }
-//        // Find existing item
-//        Items existingItem = repository.findByInvoice_InvoiceIdAndItemSerialNo(invoice.getInvoiceId(), serialNo).orElseThrow(() -> new RuntimeException("Item not found with serialNo: " + serialNo + " for invoiceNo: " + invoiceNo));
-//
-//        // Store old amount
-//        BigDecimal oldAmount = existingItem.getAmount() != null ? existingItem.getAmount() : BigDecimal.ZERO;
-//
-//
-//        // =====================================================
-//        // UPDATE DESCRIPTION
-//        // =====================================================
-//
-//        if (updatedItem.getDescription() != null && !updatedItem.getDescription().trim().isEmpty()) {
-//
-//            existingItem.setDescription(updatedItem.getDescription().trim());
-//        }
-//
-//
-//        // =====================================================
-//        // UPDATE QUANTITY
-//        // =====================================================
-//
-//        if (updatedItem.getQuantity() != null) {
-//
-//            if (updatedItem.getQuantity() <= 0) {
-//                throw new IllegalArgumentException("Quantity must be greater than 0");
-//            }
-//
-//            existingItem.setQuantity(updatedItem.getQuantity());
-//        }
-//
-//
-//        // =====================================================
-//        // UPDATE RATE
-//        // =====================================================
-//
-//        if (updatedItem.getRate() != null) {
-//
-//            if (updatedItem.getRate().compareTo(BigDecimal.ZERO) < 0) {
-//
-//                throw new IllegalArgumentException("Rate cannot be negative");
-//            }
-//
-//            existingItem.setRate(updatedItem.getRate());
-//        }
-//
-//
-//        // =====================================================
-//        // GET FINAL VALUES
-//        // =====================================================
-//
-//        Integer quantity = existingItem.getQuantity();
-//
-//        BigDecimal rate = existingItem.getRate();
-//
-//        if (quantity == null || quantity <= 0) {
-//
-//            throw new IllegalArgumentException("Quantity must be greater than 0");
-//        }
-//
-//        if (rate == null || rate.compareTo(BigDecimal.ZERO) < 0) {
-//
-//            throw new IllegalArgumentException("Rate cannot be null or negative");
-//        }
-//
-//
-//        // =====================================================
-//        // CALCULATE NEW AMOUNT
-//        // =====================================================
-//
-//        BigDecimal newAmount = rate.multiply(BigDecimal.valueOf(quantity));
-//
-//        existingItem.setAmount(newAmount);
-//
-//        // Keep invoice relationship
-//        existingItem.setInvoice(invoice);
-//
-//
-//        // =====================================================
-//        // UPDATE INVOICE TOTAL
-//        // =====================================================
-//
-//        BigDecimal difference = newAmount.subtract(oldAmount);
-//
-//        BigDecimal currentTotal = invoice.getTotalAmount() != null ? invoice.getTotalAmount() : BigDecimal.ZERO;
-//
-//        invoice.setTotalAmount(currentTotal.add(difference));
-//
-//
-//        // Save item
-//        Items savedItem = repository.save(existingItem);
-//
-//        // Save invoice
-//        invoiceRepository.save(invoice);
-//
-//        return savedItem;
-//    }
-//
-//
-//    // =========================================================
-//    // ADD MULTIPLE ITEMS
-//    // =========================================================
-//
-//    @Override
-//    @Transactional
-//    public List<Items> addItems(String invoiceNo, List<Items> items) {
-//
-//        // Find invoice
-//        Invoice invoice = invoiceService.findInvoiceNO(invoiceNo);
-//
-//        if (invoice == null) {
-//            throw new RuntimeException("Invoice not found with invoiceNo: " + invoiceNo);
-//        }
-//
-//        // Validate list
-//        if (items == null || items.isEmpty()) {
-//            throw new RuntimeException("Item list cannot be empty");
-//        }
-//
-//
-//        // =====================================================
-//        // FIND LAST SERIAL NUMBER
-//        // =====================================================
-//
-//        Integer lastSerialNo = repository.findMaxItemSerialNoByInvoiceId(invoice.getInvoiceId());
-//
-//        int nextSerialNo = lastSerialNo == null ? 1 : lastSerialNo + 1;
-//
-//
-//        BigDecimal totalItemAmount = BigDecimal.ZERO;
-//
-//
-//        // =====================================================
-//        // PROCESS ALL ITEMS
-//        // =====================================================
-//
-//        for (Items item : items) {
-//
-//            // Validate quantity
-//            if (item.getQuantity() == null || item.getQuantity() <= 0) {
-//
-//                throw new RuntimeException("Quantity must be greater than 0");
-//            }
-//
-//            // Validate rate
-//            if (item.getRate() == null || item.getRate().compareTo(BigDecimal.ZERO) < 0) {
-//
-//                throw new RuntimeException("Rate cannot be null or negative");
-//            }
-//
-//
-//            // =================================================
-//            // AUTO GENERATE SERIAL NUMBER
-//            // =================================================
-//
-//            item.setItemSerialNo(nextSerialNo++);
-//
-//
-//            // =================================================
-//            // CALCULATE AMOUNT
-//            // =================================================
-//
-//            BigDecimal amount = item.getRate().multiply(BigDecimal.valueOf(item.getQuantity()));
-//
-//            item.setAmount(amount);
-//
-//
-//            // =================================================
-//            // ASSOCIATE WITH INVOICE
-//            // =================================================
-//
-//            item.setInvoice(invoice);
-//
-//
-//            // =================================================
-//            // ADD TO TOTAL
-//            // =================================================
-//
-//            totalItemAmount = totalItemAmount.add(amount);
-//        }
-//
-//
-//        // =====================================================
-//        // SAVE ALL ITEMS
-//        // =====================================================
-//
-//        List<Items> savedItems = repository.saveAll(items);
-//
-//
-//        // =====================================================
-//        // UPDATE INVOICE TOTAL
-//        // =====================================================
-//
-//        BigDecimal currentTotal = invoice.getTotalAmount() == null ? BigDecimal.ZERO : invoice.getTotalAmount();
-//
-//        invoice.setTotalAmount(currentTotal.add(totalItemAmount));
-//
-//
-//        // Save invoice
-//        invoiceRepository.save(invoice);
-//
-//
-//        return savedItems;
-//    }
-//
-//    @Override
-//    @Transactional
-//    public Items deleteInvoiceItem(String invoiceNo, Integer serialNo) {
-//
-//        // Find invoice
-//        Invoice invoice = invoiceService.findInvoiceNO(invoiceNo);
-//
-//        if (invoice == null) {
-//            throw new RuntimeException(
-//                    "Invoice not found with invoiceNo: " + invoiceNo
-//            );
-//        }
-//
-//        // Validate serial number
-//        if (serialNo == null || serialNo <= 0) {
-//            throw new IllegalArgumentException(
-//                    "Valid Item Serial No. is required"
-//            );
-//        }
-//
-//        // Find item
-//        Items existingItem = repository
-//                .findByInvoice_InvoiceIdAndItemSerialNo(
-//                        invoice.getInvoiceId(),
-//                        serialNo
-//                )
-//                .orElseThrow(() -> new RuntimeException(
-//                        "Item not found with serialNo: "
-//                                + serialNo
-//                                + " for invoiceNo: "
-//                                + invoiceNo
-//                ));
-//
-//        // Get item amount
-//        BigDecimal itemAmount = existingItem.getAmount() != null
-//                ? existingItem.getAmount()
-//                : BigDecimal.ZERO;
-//
-//        // Delete item
-//        repository.delete(existingItem);
-//
-//        // Update invoice total
-//        BigDecimal currentTotal = invoice.getTotalAmount() != null
-//                ? invoice.getTotalAmount()
-//                : BigDecimal.ZERO;
-//
-//        BigDecimal newTotal = currentTotal.subtract(itemAmount);
-//
-//        // Prevent negative invoice total
-//        if (newTotal.compareTo(BigDecimal.ZERO) < 0) {
-//            newTotal = BigDecimal.ZERO;
-//        }
-//
-//        invoice.setTotalAmount(newTotal);
-//
-//        // Save invoice
-//        invoiceRepository.save(invoice);
-//
-//        return existingItem;
-//    }
-//}
-//
-
 package com.project.billingManagementSystem.service.impl;
 
+import com.project.billingManagementSystem.entity.dto.createDTO.ItemsRequest;
+import com.project.billingManagementSystem.entity.dto.updateDTO.ItemsUpdateRequest;
 import com.project.billingManagementSystem.entity.invoice.Invoice;
 import com.project.billingManagementSystem.entity.invoice.Items;
 import com.project.billingManagementSystem.repository.InvoiceItemsRepository;
-import com.project.billingManagementSystem.repository.InvoiceRepository;
 import com.project.billingManagementSystem.service.InvoiceItemsService;
 import com.project.billingManagementSystem.service.InvoiceService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 
-@Component
+@Service
+@Transactional
 public class InvoiceItemsServiceImpl implements InvoiceItemsService {
 
-    @Autowired
-    private InvoiceItemsRepository repository;
-
-    @Autowired
-    private InvoiceService invoiceService;
-
-    @Autowired
-    private InvoiceRepository invoiceRepository;
+    private final InvoiceItemsRepository repository;
+    private final InvoiceService invoiceService;
 
 
-    // =========================================================
-    // ADD SINGLE ITEM
-    // =========================================================
-
-    @Override
-    @Transactional
-    public Items addItems(String invoiceNo, Items items) {
-
-        // Find invoice
-        Invoice invoice = invoiceService.findInvoiceNO(invoiceNo);
-
-        if (invoice == null) {
-            throw new RuntimeException(
-                    "Invoice not found with invoiceNo: " + invoiceNo
-            );
-        }
-
-        // =====================================================
-        // DEFAULT QUANTITY TO 1 IF NOT PROVIDED
-        // =====================================================
-
-        if (items.getQuantity() == null) {
-            items.setQuantity(1);
-        }
-
-        // Validate quantity
-        if (items.getQuantity() <= 0) {
-            throw new RuntimeException(
-                    "Quantity must be greater than 0"
-            );
-        }
-
-        // =====================================================
-        // VALIDATE RATE
-        // =====================================================
-
-        if (items.getRate() == null
-                || items.getRate().compareTo(BigDecimal.ZERO) < 0) {
-
-            throw new RuntimeException(
-                    "Rate cannot be null or negative"
-            );
-        }
-
-        // =====================================================
-        // AUTO GENERATE ITEM SERIAL NUMBER
-        // =====================================================
-
-        Integer lastSerialNo =
-                repository.findMaxItemSerialNoByInvoiceId(
-                        invoice.getInvoiceId()
-                );
-
-        int nextSerialNo =
-                lastSerialNo == null ? 1 : lastSerialNo + 1;
-
-        items.setItemSerialNo(nextSerialNo);
-
-        // =====================================================
-        // CALCULATE ITEM AMOUNT
-        // =====================================================
-
-        BigDecimal amount = items.getRate()
-                .multiply(BigDecimal.valueOf(items.getQuantity()));
-
-        items.setAmount(amount);
-
-        // Associate item with invoice
-        items.setInvoice(invoice);
-
-        // Save item
-        Items savedItem = repository.save(items);
-
-        // =====================================================
-        // UPDATE INVOICE TOTAL
-        // =====================================================
-
-        BigDecimal currentTotal =
-                invoice.getTotalAmount() == null
-                        ? BigDecimal.ZERO
-                        : invoice.getTotalAmount();
-
-        invoice.setTotalAmount(
-                currentTotal.add(amount)
-        );
-
-        // Save invoice
-        invoiceRepository.save(invoice);
-
-        return savedItem;
+    public InvoiceItemsServiceImpl(InvoiceItemsRepository repository, InvoiceService invoiceService) {
+        this.repository = repository;
+        this.invoiceService = invoiceService;
     }
 
-
-    // =========================================================
-    // UPDATE ITEM
-    // invoiceNo + serialNo
-    // =========================================================
-
     @Override
-    @Transactional
-    public Items updateInvoiceItems(
-            String invoiceNo,
-            Integer serialNo,
-            Items updatedItem) {
+    public Items addItems(String invoiceNo, ItemsRequest request) {
 
-        // Find invoice
-        Invoice invoice =
-                invoiceService.findInvoiceNO(invoiceNo);
+        validateInvoiceNo(invoiceNo);
 
-        if (invoice == null) {
-            throw new RuntimeException(
-                    "Invoice not found with invoiceNo: " + invoiceNo
-            );
-        }
-
-        // =====================================================
-        // FIND EXISTING ITEM
-        // =====================================================
-
-        Items existingItem =
-                repository
-                        .findByInvoice_InvoiceIdAndItemSerialNo(
-                                invoice.getInvoiceId(),
-                                serialNo
-                        )
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Item not found with serialNo: "
-                                                + serialNo
-                                                + " for invoiceNo: "
-                                                + invoiceNo
-                                )
-                        );
-
-        // =====================================================
-        // STORE OLD AMOUNT
-        // =====================================================
-
-        BigDecimal oldAmount =
-                existingItem.getAmount() != null
-                        ? existingItem.getAmount()
-                        : BigDecimal.ZERO;
-
-
-        // =====================================================
-        // UPDATE DESCRIPTION
-        // =====================================================
-
-        if (updatedItem.getDescription() != null
-                && !updatedItem.getDescription().trim().isEmpty()) {
-
-            existingItem.setDescription(
-                    updatedItem.getDescription().trim()
-            );
+        if (request == null) {
+            throw new IllegalArgumentException("Item data is required");
         }
 
 
-        // =====================================================
-        // UPDATE QUANTITY
-        // =====================================================
+        Invoice invoice = invoiceService.findInvoiceNO(invoiceNo.trim());
 
-        if (updatedItem.getQuantity() != null) {
-
-            if (updatedItem.getQuantity() <= 0) {
-                throw new IllegalArgumentException(
-                        "Quantity must be greater than 0"
-                );
-            }
-
-            existingItem.setQuantity(
-                    updatedItem.getQuantity()
-            );
-        }
-
-        // If quantity is not provided during UPDATE,
-        // existing quantity will remain unchanged.
+        validateCreateRequest(request);
 
 
-        // =====================================================
-        // UPDATE RATE
-        // =====================================================
+        Items item = new Items();
 
-        if (updatedItem.getRate() != null) {
+        item.setDescription(request.getDescription().trim());
 
-            if (updatedItem.getRate()
-                    .compareTo(BigDecimal.ZERO) < 0) {
-
-                throw new IllegalArgumentException(
-                        "Rate cannot be negative"
-                );
-            }
-
-            existingItem.setRate(
-                    updatedItem.getRate()
-            );
-        }
-
-
-        // =====================================================
-        // GET FINAL VALUES
-        // =====================================================
-
-        Integer quantity =
-                existingItem.getQuantity();
-
-        BigDecimal rate =
-                existingItem.getRate();
-
-
-        // Safety fallback:
-        // If old database record has NULL quantity,
-        // use default quantity = 1.
+        Integer quantity = request.getQuantity();
 
         if (quantity == null) {
             quantity = 1;
-            existingItem.setQuantity(quantity);
         }
 
-        if (quantity <= 0) {
-            throw new IllegalArgumentException(
-                    "Quantity must be greater than 0"
-            );
-        }
+        item.setQuantity(quantity);
 
-        if (rate == null
-                || rate.compareTo(BigDecimal.ZERO) < 0) {
-
-            throw new IllegalArgumentException(
-                    "Rate cannot be null or negative"
-            );
-        }
+        item.setRate(request.getRate());
 
 
-        // =====================================================
-        // CALCULATE NEW AMOUNT
-        // =====================================================
+        Integer lastSerialNo = repository.findMaxItemSerialNoByInvoiceId(invoice.getInvoiceId());
 
-        BigDecimal newAmount =
-                rate.multiply(
-                        BigDecimal.valueOf(quantity)
-                );
+        int nextSerialNo = lastSerialNo == null ? 1 : lastSerialNo + 1;
 
-        existingItem.setAmount(newAmount);
+        item.setItemSerialNo(nextSerialNo);
+        BigDecimal amount = calculateAmount(quantity, request.getRate());
 
-        // Keep invoice relationship
-        existingItem.setInvoice(invoice);
+        item.setAmount(amount);
 
 
-        // =====================================================
-        // UPDATE INVOICE TOTAL
-        // =====================================================
-
-        BigDecimal difference =
-                newAmount.subtract(oldAmount);
-
-        BigDecimal currentTotal =
-                invoice.getTotalAmount() != null
-                        ? invoice.getTotalAmount()
-                        : BigDecimal.ZERO;
-
-        invoice.setTotalAmount(
-                currentTotal.add(difference)
-        );
+        item.setInvoice(invoice);
 
 
-        // =====================================================
-        // SAVE ITEM
-        // =====================================================
+        Items savedItem = repository.save(item);
 
-        Items savedItem =
-                repository.save(existingItem);
+        invoiceService.recalculateInvoice(invoice);
 
-        // Save invoice
-        invoiceRepository.save(invoice);
 
         return savedItem;
     }
 
 
-    // =========================================================
-    // ADD MULTIPLE ITEMS
-    // =========================================================
-
     @Override
-    @Transactional
-    public List<Items> addItems(
-            String invoiceNo,
-            List<Items> items) {
+    public List<Items> addItems(String invoiceNo, List<ItemsRequest> requests) {
 
-        // Find invoice
-        Invoice invoice =
-                invoiceService.findInvoiceNO(invoiceNo);
+        validateInvoiceNo(invoiceNo);
 
-        if (invoice == null) {
-            throw new RuntimeException(
-                    "Invoice not found with invoiceNo: " + invoiceNo
-            );
+        if (requests == null || requests.isEmpty()) {
+            throw new IllegalArgumentException("Item list cannot be empty");
         }
 
-        // =====================================================
-        // VALIDATE LIST
-        // =====================================================
+        Invoice invoice = invoiceService.findInvoiceNO(invoiceNo.trim());
+        Integer lastSerialNo = repository.findMaxItemSerialNoByInvoiceId(invoice.getInvoiceId());
 
-        if (items == null || items.isEmpty()) {
-            throw new RuntimeException(
-                    "Item list cannot be empty"
-            );
-        }
+        int nextSerialNo = lastSerialNo == null ? 1 : lastSerialNo + 1;
 
 
-        // =====================================================
-        // FIND LAST SERIAL NUMBER
-        // =====================================================
-
-        Integer lastSerialNo =
-                repository.findMaxItemSerialNoByInvoiceId(
-                        invoice.getInvoiceId()
-                );
-
-        int nextSerialNo =
-                lastSerialNo == null
-                        ? 1
-                        : lastSerialNo + 1;
+        List<Items> items = new ArrayList<>();
 
 
-        BigDecimal totalItemAmount =
-                BigDecimal.ZERO;
+        for (ItemsRequest request : requests) {
 
+            if (request == null) {
+                throw new IllegalArgumentException("Item cannot be null");
+            }
+            validateCreateRequest(request);
+            Items item = new Items();
+            item.setDescription(request.getDescription().trim());
+            Integer quantity = request.getQuantity();
 
-        // =====================================================
-        // PROCESS ALL ITEMS
-        // =====================================================
-
-        for (Items item : items) {
-
-            // =================================================
-            // DEFAULT QUANTITY TO 1
-            // =================================================
-
-            if (item.getQuantity() == null) {
-                item.setQuantity(1);
+            if (quantity == null) {
+                quantity = 1;
             }
 
-            // =================================================
-            // VALIDATE QUANTITY
-            // =================================================
+            item.setQuantity(quantity);
 
-            if (item.getQuantity() <= 0) {
-                throw new RuntimeException(
-                        "Quantity must be greater than 0"
-                );
-            }
+            item.setRate(request.getRate());
 
-            // =================================================
-            // VALIDATE RATE
-            // =================================================
+            item.setItemSerialNo(nextSerialNo++);
 
-            if (item.getRate() == null
-                    || item.getRate()
-                    .compareTo(BigDecimal.ZERO) < 0) {
-
-                throw new RuntimeException(
-                        "Rate cannot be null or negative"
-                );
-            }
-
-
-            // =================================================
-            // AUTO GENERATE SERIAL NUMBER
-            // =================================================
-
-            item.setItemSerialNo(
-                    nextSerialNo++
-            );
-
-
-            // =================================================
-            // CALCULATE AMOUNT
-            // =================================================
-
-            BigDecimal amount =
-                    item.getRate()
-                            .multiply(
-                                    BigDecimal.valueOf(
-                                            item.getQuantity()
-                                    )
-                            );
+            BigDecimal amount = calculateAmount(quantity, request.getRate());
 
             item.setAmount(amount);
 
-
-            // =================================================
-            // ASSOCIATE WITH INVOICE
-            // =================================================
-
             item.setInvoice(invoice);
 
-
-            // =================================================
-            // ADD TO TOTAL
-            // =================================================
-
-            totalItemAmount =
-                    totalItemAmount.add(amount);
+            items.add(item);
         }
 
+        List<Items> savedItems = repository.saveAll(items);
 
-        // =====================================================
-        // SAVE ALL ITEMS
-        // =====================================================
-
-        List<Items> savedItems =
-                repository.saveAll(items);
-
-
-        // =====================================================
-        // UPDATE INVOICE TOTAL
-        // =====================================================
-
-        BigDecimal currentTotal =
-                invoice.getTotalAmount() == null
-                        ? BigDecimal.ZERO
-                        : invoice.getTotalAmount();
-
-        invoice.setTotalAmount(
-                currentTotal.add(totalItemAmount)
-        );
-
-
-        // Save invoice
-        invoiceRepository.save(invoice);
-
+        invoiceService.recalculateInvoice(invoice);
 
         return savedItems;
     }
 
 
-    // =========================================================
-    // DELETE ITEM
-    // =========================================================
-
     @Override
-    @Transactional
-    public Items deleteInvoiceItem(
-            String invoiceNo,
-            Integer serialNo) {
+    public Items updateInvoiceItems(String invoiceNo, Integer serialNo, ItemsUpdateRequest request) {
 
-        // Find invoice
-        Invoice invoice =
-                invoiceService.findInvoiceNO(invoiceNo);
-
-        if (invoice == null) {
-            throw new RuntimeException(
-                    "Invoice not found with invoiceNo: "
-                            + invoiceNo
-            );
-        }
-
-        // =====================================================
-        // VALIDATE SERIAL NUMBER
-        // =====================================================
+        validateInvoiceNo(invoiceNo);
 
         if (serialNo == null || serialNo <= 0) {
-            throw new IllegalArgumentException(
-                    "Valid Item Serial No. is required"
-            );
+
+            throw new IllegalArgumentException("Valid Item Serial No. is required");
         }
 
-        // =====================================================
-        // FIND ITEM
-        // =====================================================
+        if (request == null) {
 
-        Items existingItem =
-                repository
-                        .findByInvoice_InvoiceIdAndItemSerialNo(
-                                invoice.getInvoiceId(),
-                                serialNo
-                        )
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Item not found with serialNo: "
-                                                + serialNo
-                                                + " for invoiceNo: "
-                                                + invoiceNo
-                                )
-                        );
+            throw new IllegalArgumentException("Item update data is required");
+        }
 
-        // =====================================================
-        // GET ITEM AMOUNT
-        // =====================================================
+        Invoice invoice = invoiceService.findInvoiceNO(invoiceNo.trim());
 
-        BigDecimal itemAmount =
-                existingItem.getAmount() != null
-                        ? existingItem.getAmount()
-                        : BigDecimal.ZERO;
+        Items existingItem = repository.findByInvoice_InvoiceIdAndItemSerialNo(invoice.getInvoiceId(), serialNo).orElseThrow(() -> new RuntimeException("Item not found with serialNo: " + serialNo + " for invoiceNo: " + invoiceNo));
 
-        // =====================================================
-        // DELETE ITEM
-        // =====================================================
+        if (request.getDescription() == null || request.getDescription().isBlank()) {
+
+            throw new IllegalArgumentException("Item description is required");
+        }
+
+        if (request.getQuantity() == null || request.getQuantity() <= 0) {
+
+            throw new IllegalArgumentException("Quantity must be greater than 0");
+        }
+
+
+        if (request.getRate() == null || request.getRate().compareTo(BigDecimal.ZERO) <= 0) {
+
+            throw new IllegalArgumentException("Rate must be greater than zero");
+        }
+
+        existingItem.setDescription(request.getDescription().trim());
+
+        existingItem.setQuantity(request.getQuantity());
+
+        existingItem.setRate(request.getRate());
+
+        BigDecimal newAmount = calculateAmount(existingItem.getQuantity(), existingItem.getRate());
+
+        existingItem.setAmount(newAmount);
+        Items savedItem = repository.save(existingItem);
+
+        invoiceService.recalculateInvoice(invoice);
+
+
+        return savedItem;
+    }
+
+
+
+    @Override
+    public Items deleteInvoiceItem(String invoiceNo, Integer serialNo) {
+
+        validateInvoiceNo(invoiceNo);
+
+        if (serialNo == null || serialNo <= 0) {
+
+            throw new IllegalArgumentException("Valid Item Serial No. is required");
+        }
+
+
+        Invoice invoice = invoiceService.findInvoiceNO(invoiceNo.trim());
+
+
+        Items existingItem = repository.findByInvoice_InvoiceIdAndItemSerialNo(invoice.getInvoiceId(), serialNo).orElseThrow(() -> new RuntimeException("Item not found with serialNo: " + serialNo + " for invoiceNo: " + invoiceNo));
 
         repository.delete(existingItem);
 
-        // =====================================================
-        // UPDATE INVOICE TOTAL
-        // =====================================================
+        repository.flush();
 
-        BigDecimal currentTotal =
-                invoice.getTotalAmount() != null
-                        ? invoice.getTotalAmount()
-                        : BigDecimal.ZERO;
+        invoiceService.recalculateInvoice(invoice);
 
-        BigDecimal newTotal =
-                currentTotal.subtract(itemAmount);
-
-        // Prevent negative invoice total
-        if (newTotal.compareTo(BigDecimal.ZERO) < 0) {
-            newTotal = BigDecimal.ZERO;
-        }
-
-        invoice.setTotalAmount(newTotal);
-
-        // Save invoice
-        invoiceRepository.save(invoice);
 
         return existingItem;
     }
+
+
+    private void validateCreateRequest(ItemsRequest request) {
+
+        // Description
+        if (request.getDescription() == null || request.getDescription().isBlank()) {
+
+            throw new IllegalArgumentException("Item description is required");
+        }
+
+
+        // Rate
+        if (request.getRate() == null) {
+
+            throw new IllegalArgumentException("Rate is required");
+        }
+
+
+        if (request.getRate().compareTo(BigDecimal.ZERO) <= 0) {
+
+            throw new IllegalArgumentException("Rate must be greater than zero");
+        }
+
+
+        // Quantity
+        if (request.getQuantity() != null && request.getQuantity() <= 0) {
+
+            throw new IllegalArgumentException("Quantity must be greater than 0");
+        }
+    }
+
+
+
+    private BigDecimal calculateAmount(Integer quantity, BigDecimal rate) {
+
+        if (quantity == null) {
+            quantity = 1;
+        }
+
+        if (rate == null) {
+            throw new IllegalArgumentException("Rate is required");
+        }
+
+        return rate.multiply(BigDecimal.valueOf(quantity));
+    }
+
+
+    private void validateInvoiceNo(String invoiceNo) {
+
+        if (invoiceNo == null || invoiceNo.isBlank()) {
+
+            throw new IllegalArgumentException("Invoice number is required");
+        }
+    }
 }
+

@@ -1,76 +1,230 @@
 package com.project.billingManagementSystem.service.impl;
 
 import com.project.billingManagementSystem.entity.Customer;
+import com.project.billingManagementSystem.entity.dto.createDTO.InvoiceRequest;
+import com.project.billingManagementSystem.entity.dto.updateDTO.InvoiceUpdateRequest;
 import com.project.billingManagementSystem.entity.invoice.Invoice;
+import com.project.billingManagementSystem.entity.invoice.Items;
+import com.project.billingManagementSystem.enums.PaymentStatus;
+import com.project.billingManagementSystem.mapperDTO.InvoiceMapper;
 import com.project.billingManagementSystem.repository.CustomerRepository;
+import com.project.billingManagementSystem.repository.InvoiceItemsRepository;
 import com.project.billingManagementSystem.repository.InvoiceRepository;
 import com.project.billingManagementSystem.service.InvoiceService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 
-@Component
+@Service
+@Transactional
 public class InvoiceServiceImpl implements InvoiceService {
 
-    @Autowired
-    private InvoiceRepository repository;
+    private final InvoiceRepository repository;
+    private final CustomerRepository customerRepository;
+    private final InvoiceItemsRepository itemsRepository;
+    private final InvoiceMapper invoiceMapper;
 
-    @Autowired
-    CustomerRepository customerRepository;
+
+    public InvoiceServiceImpl(InvoiceRepository repository, CustomerRepository customerRepository, InvoiceItemsRepository itemsRepository, InvoiceMapper invoiceMapper) {
+
+        this.repository = repository;
+        this.customerRepository = customerRepository;
+        this.itemsRepository = itemsRepository;
+        this.invoiceMapper = invoiceMapper;
+    }
 
 
     @Override
-    public Invoice createInvoice(Invoice invoice) {
+    public Invoice createInvoice(InvoiceRequest request) {
 
-        String customerPhone = invoice.getCustomer().getPhoneNo();
+        if (request == null) {
 
-        Customer customer = customerRepository.findByPhoneNo(customerPhone)
-                .orElseThrow(() -> new RuntimeException("Customer not found with phone: " + customerPhone));
+            throw new IllegalArgumentException("Invoice request cannot be null");
+        }
+
+
+        if (request.getCustomerPhone() == null || request.getCustomerPhone().isBlank()) {
+
+            throw new IllegalArgumentException("Customer phone number is required");
+        }
+
+
+        String phone = request.getCustomerPhone().trim();
+
+
+        Customer customer = customerRepository.findByPhoneNo(phone).orElseThrow(() -> new RuntimeException("Customer not found with phone number: " + phone));
+
+
+
+        Invoice invoice = invoiceMapper.toEntity(request);
+
+
+        invoice.setInvoiceNo(generateInvoiceNumber());
+
+        invoice.setDate(LocalDate.now());
 
         invoice.setCustomer(customer);
+
+        invoice.setTotalAmount(BigDecimal.ZERO);
+
+        invoice.setAdvanceAmount(BigDecimal.ZERO);
+
+        invoice.setBalanceAmount(BigDecimal.ZERO);
+
+        invoice.setStatus(PaymentStatus.PENDING);
+
+
+        BigDecimal advance = request.getAdvanceAmount();
+
+        if (advance != null && advance.compareTo(BigDecimal.ZERO) < 0) {
+
+            throw new IllegalArgumentException("Advance amount cannot be negative");
+        }
+
+
+        if (advance != null && advance.compareTo(BigDecimal.ZERO) > 0) {
+
+            throw new IllegalArgumentException("Advance amount cannot be added before invoice items are added");
+        }
+
+        return repository.save(invoice);
+    }
+
+
+    private String generateInvoiceNumber() {
+
+        long count = repository.count();
+
+        long nextNumber = count + 1;
+
+        return String.format("INV-%05d", nextNumber);
+    }
+
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Invoice> listInvoice() {
+
+        return repository.findAll();
+    }
+
+
+
+    @Override
+    @Transactional(readOnly = true)
+    public Invoice findInvoiceNO(String invoiceNo) {
+
+        if (invoiceNo == null || invoiceNo.isBlank()) {
+
+            throw new IllegalArgumentException("Invoice number is required");
+        }
+
+
+        String trimmedInvoiceNo = invoiceNo.trim();
+
+
+        Invoice invoice = repository.findByInvoiceNo(trimmedInvoiceNo);
+
+
+        if (invoice == null) {
+
+            throw new RuntimeException("Invoice not found with invoice number: " + trimmedInvoiceNo);
+        }
+
+
+        return invoice;
+    }
+
+
+    @Override
+    public Invoice updatingDataAndAmount(String invoiceNo, InvoiceUpdateRequest request) {
+
+        if (invoiceNo == null || invoiceNo.isBlank()) {
+
+            throw new IllegalArgumentException("Invoice number is required");
+        }
+
+
+        if (request == null) {
+
+            throw new IllegalArgumentException("Invoice update data cannot be null");
+        }
+
+
+        Invoice invoice = repository.findByInvoiceNo(invoiceNo.trim());
+
+
+        if (invoice == null) {
+
+            throw new RuntimeException("Invoice not found with invoice number: " + invoiceNo);
+        }
+
+
+        if (request.getAdvanceAmount() != null) {
+
+            BigDecimal advance = request.getAdvanceAmount();
+
+
+            if (advance.compareTo(BigDecimal.ZERO) < 0) {
+
+                throw new IllegalArgumentException("Advance amount cannot be negative");
+            }
+
+            invoice.setAdvanceAmount(advance);
+
+        }
+
+        recalculateInvoice(invoice);
+
 
         return repository.save(invoice);
     }
 
     @Override
-    public List<Invoice> listInvoice() {
-        return repository.findAll();
-    }
+    public void recalculateInvoice(Invoice invoice) {
 
-    @Override
-    public Invoice findInvoiceNO(String invoiceNo) {
+        if (invoice == null) {
 
-        if(invoiceNo != null){
-
-            Invoice invoice = repository.findByInvoiceNo(invoiceNo);
-            return invoice;
-
+            throw new IllegalArgumentException("Invoice cannot be null");
         }
-        return null;
-    }
 
+        List<Items> items = itemsRepository.findByInvoice_InvoiceId(invoice.getInvoiceId());
+        BigDecimal totalAmount = items.stream().map(Items::getAmount)
+                .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
 
-    @Override
-    public Invoice updatingDataAndAmount(String invoiceNo, Invoice invoice) {
-        if (invoice != null) {
+        invoice.setTotalAmount(totalAmount);
+        BigDecimal advanceAmount = invoice.getAdvanceAmount();
 
-            Invoice listInvoice = repository.findByInvoiceNo(invoiceNo);
-            if (listInvoice != null) {
-                if (invoice.getStatus() != null) {
-                    listInvoice.setStatus(invoice.getStatus());
-                }
-                if (invoice.getDate() != null) {
-                    listInvoice.setDate(invoice.getDate());
-                }
-                if (invoice.getTotalAmount() != null) {
-                    listInvoice.setTotalAmount(invoice.getTotalAmount());
-                }
-                return repository.save(listInvoice);
-            }
+        if (advanceAmount == null) {
+
+            advanceAmount = BigDecimal.ZERO;
         }
-        return null;
+        if (advanceAmount.compareTo(BigDecimal.ZERO) < 0) {
+
+            throw new IllegalArgumentException("Advance amount cannot be negative");
+        }
+        if (advanceAmount.compareTo(totalAmount) > 0) {
+
+            throw new IllegalArgumentException("Advance amount cannot be greater than total amount");
+        }
+
+        BigDecimal balanceAmount = totalAmount.subtract(advanceAmount);
+        invoice.setBalanceAmount(balanceAmount);
+
+        if (totalAmount.compareTo(BigDecimal.ZERO) == 0) {
+            invoice.setStatus(PaymentStatus.PENDING);
+
+        } else if (advanceAmount.compareTo(totalAmount) == 0) {
+            invoice.setStatus(PaymentStatus.PAID);
+
+        } else {
+            invoice.setStatus(PaymentStatus.PENDING);
+        }
+
+        repository.save(invoice);
     }
-
-
 }

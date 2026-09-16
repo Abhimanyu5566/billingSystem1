@@ -1,118 +1,170 @@
 package com.project.billingManagementSystem.service.impl;
 
+import com.project.billingManagementSystem.entity.Customer;
+import com.project.billingManagementSystem.entity.dto.createDTO.CustomerRequest;
+import com.project.billingManagementSystem.entity.dto.updateDTO.CustomerUpdateRequest;
+import com.project.billingManagementSystem.enums.CustomerStatus;
+import com.project.billingManagementSystem.mapperDTO.CustomerMapper;
+import com.project.billingManagementSystem.repository.CustomerRepository;
+import com.project.billingManagementSystem.service.CustomerService;
+import org.springframework.stereotype.Service;
+
 import java.util.List;
 import java.util.Optional;
 
-import com.project.billingManagementSystem.enums.CustomerStatus;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
-
-import com.project.billingManagementSystem.entity.Customer;
-import com.project.billingManagementSystem.repository.CustomerRepository;
-import com.project.billingManagementSystem.service.CustomerService;
-
-@Component
+@Service
 public class CustomerServiceIMPl implements CustomerService {
 
-	@Autowired
-	private CustomerRepository repository;
+    private final CustomerRepository repository;
 
+    private  final CustomerMapper customerMapper;
 
-	@Override
-	public boolean addCustomer(Customer customer) {
+    public CustomerServiceIMPl(CustomerRepository repository, CustomerMapper customerMapper) {
+        this.repository = repository;
+        this.customerMapper = customerMapper;
+    }
 
-		Optional<Customer> existingCustomer =
-				repository.findByPhoneNo(customer.getPhoneNo());
+    /**
+     * Add Customer
+     */
+    @Override
+    public Customer addCustomer(CustomerRequest request) {
 
-		if (existingCustomer.isPresent()) {
-			return false;
-		}
+        if (request == null) {
+            throw new IllegalArgumentException("Customer request cannot be null");
+        }
 
-		customer.setStatus(CustomerStatus.Active);
-		repository.save(customer);
+        Optional<Customer> existingCustomer = repository.findByPhoneNo(request.getPhoneNo());
 
-		return true;
-	}
-	
+        if (existingCustomer.isPresent() && existingCustomer.get().getStatus() != CustomerStatus.Deleted) {
 
-	@Override
-	public List<Customer> getCustomersList() {
-		return repository.findAll();
-	}
+            throw new IllegalStateException("Customer already exists with phone number: " + request.getPhoneNo());
+        }
 
-	@Override
-	public String findByPhoneNumber(String phoneNumber) {
-		Optional<Customer> customer = repository.findByPhoneNo(phoneNumber);
-		if (customer.isPresent()) {
+        if (existingCustomer.isPresent() && existingCustomer.get().getStatus() == CustomerStatus.Deleted) {
 
-			return String.format("Customer is already present with this Phone No.: %s in Database", customer.get().getPhoneNo());
-		}
-		return String.format("This phone No.: %s is Not present in database", phoneNumber);
-	}
+            throw new IllegalStateException("Customer already exists with this phone number: " + request.getPhoneNo()+" in Database");
+        }
 
-	@Override
-	public Customer findByCustomerNumber(String phoneNo) {
+        Customer customer = customerMapper.toEntity(request);
 
-		Optional<Customer> customer = repository.findByPhoneNo(phoneNo);
-		if (customer.isPresent() &&
-				customer.get().getStatus() != CustomerStatus.Deleted) {
-			return customer.get();
-		}
+        customer.setStatus(CustomerStatus.Active);
 
+        return repository.save(customer);
+    }
 
-		return null;
-	}
+    /**
+     * Get all customers
+     */
+    @Override
+    public List<Customer> getCustomersList() {
 
-	@Override
-	public Customer updateCustomerDetails(String phoneNo, Customer customer) {
+        return repository.findAll();
+    }
 
-		Optional<Customer> customerPhone = repository.findByPhoneNo(phoneNo);
+    /**
+     * Check customer by phone number
+     */
+    @Override
+    public String findByPhoneNumber(String phoneNumber) {
 
-		if (customerPhone.isPresent()) {
+        Optional<Customer> customer = repository.findByPhoneNo(phoneNumber);
 
-			Customer updateCustomer = customerPhone.get();
-			if (updateCustomer.getStatus() == CustomerStatus.Deleted) {
-				return updateCustomer;
-			}
+        if (customer.isPresent() && customer.get().getStatus() != CustomerStatus.Deleted) {
 
-			if (customer.getCustomerName() != null) {
-				updateCustomer.setCustomerName(customer.getCustomerName());
-			}
+            return String.format("Customer is already present with this Phone No.: %s in Database", customer.get().getPhoneNo());
+        }
 
-			if (customer.getCustomerLastName() != null) {
-				updateCustomer.setCustomerLastName(customer.getCustomerLastName());
-			}
+        if (customer.isPresent() && customer.get().getStatus() != CustomerStatus.Active) {
 
-			if (customer.getEmailId() != null) {
-				updateCustomer.setEmailId(customer.getEmailId());
-			}
+            return String.format("Customer is already present with this Phone No.: %s in Database but Deleted", customer.get().getPhoneNo());
+        }
 
-			if (customer.getPhoneNo() != null) {
-				updateCustomer.setPhoneNo(customer.getPhoneNo());
-			}
+        return String.format("This phone No.: %s is not present in database", phoneNumber);
+    }
 
-			return repository.save(updateCustomer);
-		}
+    /**
+     * Find customer by phone number
+     */
+    @Override
+    public Customer findByCustomerNumber(String phoneNo) {
 
-		return null;
-	}
+        return repository.findByPhoneNo(phoneNo).filter(customer -> customer.getStatus() != CustomerStatus.Deleted).orElseThrow(() -> new IllegalStateException("Customer not found with phone number: " + phoneNo));
+    }
 
-	@Override
-	public void deleteCustomer(String phoneNo) {
+    /**
+     * Update customer details
+     * <p>
+     * Only non-null fields are updated.
+     */
+    @Override
+    public Customer updateCustomerDetails(String phoneNo, CustomerUpdateRequest request) {
 
-		Optional<Customer> customer = repository.findByPhoneNo(phoneNo);
+        if (phoneNo == null || phoneNo.isBlank()) {
+            throw new IllegalArgumentException("Phone number cannot be empty");
+        }
 
-		if (customer.isPresent()) {
+        if (request == null) {
+            throw new IllegalArgumentException("Customer update request cannot be null");
+        }
 
-			Customer existingCustomer = customer.get();
-			existingCustomer.setStatus(CustomerStatus.Deleted);
+        Customer existingCustomer = repository.findByPhoneNo(phoneNo).orElseThrow(() -> new IllegalStateException("Customer not found with phone number: " + phoneNo));
 
-			repository.save(existingCustomer);
+        // Do not update deleted customers
+        if (existingCustomer.getStatus() == CustomerStatus.Deleted) {
+            throw new IllegalStateException("Deleted customer cannot be updated");
+        }
 
-			System.out.println("Customer deleted successfully.");
-		} else {
-			System.out.println("Customer not found.");
-		}
-	}
+        /*
+         * Update only the fields supplied by the client.
+         */
 
+        if (request.getCustomerName() != null) {
+            existingCustomer.setCustomerName(request.getCustomerName());
+        }
+
+        if(request.getCustomerLastName()!= null){
+            existingCustomer.setCustomerLastName(request.getCustomerLastName());
+        }
+
+        if (request.getEmailId() != null) {
+            existingCustomer.setEmailId(request.getEmailId());
+        }
+
+        /*
+         * If phone number itself is being changed,
+         * make sure another customer doesn't already use it.
+         */
+        if (request.getPhoneNo() != null && !request.getPhoneNo().equals(existingCustomer.getPhoneNo())) {
+
+            Optional<Customer> customerWithNewPhone = repository.findByPhoneNo(request.getPhoneNo());
+
+            if (customerWithNewPhone.isPresent() && customerWithNewPhone.get().getStatus() != CustomerStatus.Deleted) {
+
+                throw new IllegalStateException("Another customer already exists with phone number: " + request.getPhoneNo());
+            }
+
+            existingCustomer.setPhoneNo(request.getPhoneNo());
+        }
+
+        return repository.save(existingCustomer);
+    }
+
+    /**
+     * Soft delete customer
+     */
+    @Override
+    public void deleteCustomer(String phoneNo) {
+
+        Customer customer = repository.findByPhoneNo(phoneNo).orElseThrow(() -> new IllegalStateException("Customer not found with phone number: " + phoneNo));
+
+        if (customer.getStatus() == CustomerStatus.Deleted) {
+            throw new IllegalStateException("Customer is already deleted");
+        }
+
+        customer.setStatus(CustomerStatus.Deleted);
+
+        repository.save(customer);
+    }
 }
+
